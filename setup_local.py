@@ -112,7 +112,7 @@ def start_qdrant(compose_command: str):
     max_retries = 30
     for i in range(max_retries):
         try:
-            response = requests.get("http://localhost:6333/health", timeout=5)
+            response = requests.get("http://localhost:6333/healthz", timeout=5)
             if response.status_code == 200:
                 print_status("Qdrant is ready", "SUCCESS")
                 return True
@@ -172,7 +172,7 @@ def validate_setup():
 
     # Check Qdrant
     try:
-        response = requests.get("http://localhost:6333/health", timeout=5)
+        response = requests.get("http://localhost:6333/healthz", timeout=5)
         if response.status_code == 200:
             print_status("✓ Qdrant is accessible", "SUCCESS")
         else:

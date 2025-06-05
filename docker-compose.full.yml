@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Qdrant Vector Database
   qdrant:
@@ -20,7 +18,7 @@ services:
       - QDRANT__STORAGE__WAL__WAL_SEGMENTS_AHEAD=0
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/6333' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
