@@ -18,6 +18,76 @@ This project evaluates Mem0 and compares it with different memory and retrieval 
 
 We test these techniques on the LOCOMO dataset, which contains conversational data with various question types to evaluate memory recall and understanding.
 
+## 🏠 Local AI Setup
+
+This project now supports **fully local AI processing** without requiring cloud API keys. The local setup includes:
+
+### Local Techniques Available
+
+1. **Ollama Integration** (`ollama`): Local LLM processing using Ollama
+2. **Memzero Local** (`memzero_local`): Local version of Mem0 using Ollama + Qdrant
+3. **Qdrant RAG** (`qdrant_rag`): Vector-based RAG using local embeddings and Qdrant
+
+### Quick Local Setup
+
+```bash
+# Install local AI stack
+make setup-local
+
+# Start local services
+make start-local
+
+# Test local setup
+make test-local
+```
+
+### Advanced Setup Options
+
+```bash
+# Complete local stack with all services
+make start-full-stack
+
+# Full stack with monitoring (Grafana, Prometheus, Jaeger)
+make start-with-monitoring
+
+# Clean everything
+make clean-all
+```
+
+### Comparison: Local vs Cloud
+
+| Feature | Cloud (OpenAI/Mem0) | Local (Ollama/Qdrant) |
+|---------|-------------------|---------------------|
+| **Cost** | Pay-per-token | Free after setup |
+| **Privacy** | Data sent to cloud | Fully local |
+| **Speed** | Fast (optimized) | Depends on hardware |
+| **Setup** | API keys only | Requires installation |
+| **Models** | Latest GPT models | Open-source models |
+| **Internet** | Required | Not required |
+
+### Hardware Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| **RAM** | 8GB | 16GB+ |
+| **CPU** | 4 cores | 8+ cores |
+| **Storage** | 10GB free | 50GB+ free |
+| **GPU** | None (CPU only) | NVIDIA GPU for speed |
+
+For detailed setup instructions, see [`LOCAL_AI_GUIDE.md`](LOCAL_AI_GUIDE.md).
+
+### Local vs Cloud Examples
+
+```bash
+# Compare local vs cloud performance
+make run-local-benchmark      # Local techniques
+make run-mem0-search         # Cloud Mem0
+make run-openai              # Cloud OpenAI
+
+# View comparison results
+python generate_scores.py --compare_local_cloud
+```
+
 ## 🔍 Dataset
 
 The LOCOMO dataset used in our experiments can be downloaded from our Google Drive repository:
@@ -34,19 +104,27 @@ Place the dataset files in the `dataset/` directory:
 
 ```
 .
-├── src/                  # Source code for different memory techniques
-│   ├── mem0/             # Implementation of the Mem0 technique
-│   ├── openai/           # Implementation of the OpenAI memory
-│   ├── zep/              # Implementation of the Zep memory
-│   ├── rag.py            # Implementation of the RAG technique
-│   └── langmem.py        # Implementation of the Language-based memory
-├── metrics/              # Code for evaluation metrics
-├── results/              # Results of experiments
-├── dataset/              # Dataset files
-├── evals.py              # Evaluation script
-├── run_experiments.py    # Script to run experiments
-├── generate_scores.py    # Script to generate scores from results
-└── prompts.py            # Prompts used for the models
+├── src/                     # Source code for different memory techniques
+│   ├── mem0/                # Implementation of the Mem0 technique
+│   ├── memzero_local/       # Local Mem0 implementation (Ollama + Qdrant)
+│   ├── ollama/              # Ollama integration for local LLMs
+│   ├── qdrant_rag/          # Qdrant-based RAG implementation
+│   ├── openai/              # Implementation of the OpenAI memory
+│   ├── zep/                 # Implementation of the Zep memory
+│   ├── rag.py               # Implementation of the RAG technique
+│   └── langmem.py           # Implementation of the Language-based memory
+├── metrics/                 # Code for evaluation metrics
+├── results/                 # Results of experiments
+├── dataset/                 # Dataset files
+├── evals.py                 # Evaluation script
+├── run_experiments.py       # Script to run experiments
+├── run_local_benchmark.py   # Local AI benchmarking script
+├── generate_scores.py       # Script to generate scores from results
+├── setup_local.py           # Local AI stack setup script
+├── docker-compose.yml       # Qdrant service configuration
+├── docker-compose.full.yml  # Complete local stack
+├── LOCAL_AI_GUIDE.md        # Comprehensive local setup guide
+└── prompts.py               # Prompts used for the models
 ```
 
 ## 🚀 Getting Started
@@ -98,6 +176,14 @@ make run-zep-search       # Search memories using Zep
 
 # Run OpenAI experiments
 make run-openai           # Run OpenAI experiments
+
+# Run Local AI experiments
+make run-ollama           # Run Ollama experiments
+make run-memzero-local    # Run local Mem0 experiments
+make run-qdrant-rag       # Run Qdrant RAG experiments
+
+# Local benchmarks
+make run-local-benchmark  # Run comprehensive local benchmarks
 ```
 
 Alternatively, you can run experiments directly with custom parameters:
@@ -110,13 +196,14 @@ python run_experiments.py --technique_type [mem0|rag|langmem] [additional parame
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--technique_type` | Memory technique to use (mem0, rag, langmem) | mem0 |
+| `--technique_type` | Memory technique to use (mem0, rag, langmem, ollama, memzero_local, qdrant_rag) | mem0 |
 | `--method` | Method to use (add, search) | add |
 | `--chunk_size` | Chunk size for processing | 1000 |
 | `--top_k` | Number of top memories to retrieve | 30 |
 | `--filter_memories` | Whether to filter memories | False |
 | `--is_graph` | Whether to use graph-based search | False |
 | `--num_chunks` | Number of chunks to process for RAG | 1 |
+| `--local_setup` | Use local AI stack instead of cloud APIs | False |
 
 ### 📊 Evaluation
 
@@ -150,7 +237,7 @@ Example output:
 ```
 Mean Scores Per Category:
          bleu_score  f1_score  llm_score  count
-category                                       
+category
 1           0.xxxx    0.xxxx     0.xxxx     xx
 2           0.xxxx    0.xxxx     0.xxxx     xx
 3           0.xxxx    0.xxxx     0.xxxx     xx

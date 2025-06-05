@@ -4,7 +4,13 @@ import os
 from src.langmem import LangMemManager
 from src.memzero.add import MemoryADD
 from src.memzero.search import MemorySearch
+from src.memzero_local.add import MemoryADDLocal
+from src.memzero_local.search import MemorySearchLocal
 from src.openai.predict import OpenAIPredict
+from src.ollama.predict import OllamaPredict
+from src.ollama.rag import OllamaRAGManager
+from src.qdrant_rag.add import QdrantRAGAdd
+from src.qdrant_rag.search import QdrantRAGSearch
 from src.rag import RAGManager
 from src.utils import METHODS, TECHNIQUES
 from src.zep.add import ZepAdd
@@ -67,6 +73,64 @@ def main():
         output_file_path = os.path.join(args.output_folder, "openai_results.json")
         openai_manager = OpenAIPredict()
         openai_manager.process_data_file("dataset/locomo10.json", output_file_path)
+    elif args.technique_type == "ollama":
+        if args.method == "add":
+            # For Ollama, we use RAG-based approach which doesn't require separate add step
+            print("Ollama uses RAG-based approach. Use 'search' method or 'ollama-rag' technique.")
+        elif args.method == "search":
+            output_file_path = os.path.join(args.output_folder, "ollama_results.json")
+            ollama_manager = OllamaPredict()
+            ollama_manager.process_data_file("dataset/locomo10.json", output_file_path)
+        elif args.method == "rag":
+            output_file_path = os.path.join(args.output_folder, f"ollama_rag_results_{args.chunk_size}_k{args.num_chunks}.json")
+            ollama_rag_manager = OllamaRAGManager(data_path="dataset/locomo10_rag.json", chunk_size=args.chunk_size, k=args.num_chunks)
+            ollama_rag_manager.process_all_conversations(output_file_path)
+    elif args.technique_type == "memzero_local":
+        if args.method == "add":
+            memory_manager = MemoryADDLocal(data_path="dataset/locomo10.json", is_graph=args.is_graph)
+            memory_manager.process_all_conversations()
+        elif args.method == "search":
+            output_file_path = os.path.join(
+                args.output_folder,
+                f"memzero_local_results_top_{args.top_k}_filter_{args.filter_memories}_graph_{args.is_graph}.json",
+            )
+            memory_searcher = MemorySearchLocal(output_file_path, args.top_k, args.filter_memories, args.is_graph)
+            memory_searcher.process_data_file("dataset/locomo10.json")
+    elif args.technique_type == "qdrant_rag":
+        if args.method == "add":
+            memory_manager = QdrantRAGAdd(
+                data_path="dataset/locomo10.json",
+                chunk_size=args.chunk_size,
+                collection_name=f"rag_memories_{args.chunk_size}"
+            )
+            memory_manager.process_all_conversations()
+        elif args.method == "search":
+            output_file_path = os.path.join(
+                args.output_folder,
+                f"qdrant_rag_results_top_{args.top_k}_chunk_{args.chunk_size}_filter_{args.filter_memories}.json",
+            )
+            memory_searcher = QdrantRAGSearch(
+                output_file_path=output_file_path,
+                top_k=args.top_k,
+                filter_memories=args.filter_memories,
+                collection_name=f"rag_memories_{args.chunk_size}",
+                chunk_size=args.chunk_size
+            )
+            memory_searcher.process_data_file("dataset/locomo10.json")
+        elif args.method == "rag":
+            output_file_path = os.path.join(
+                args.output_folder,
+                f"qdrant_rag_results_{args.chunk_size}_k{args.num_chunks}.json"
+            )
+            # For RAG method, use the RAG manager directly
+            from src.qdrant_rag.rag import QdrantRAGManager
+            qdrant_rag_manager = QdrantRAGManager(
+                data_path="dataset/locomo10_rag.json",
+                chunk_size=args.chunk_size,
+                k=args.num_chunks,
+                collection_name=f"rag_memories_{args.chunk_size}"
+            )
+            qdrant_rag_manager.process_all_conversations(output_file_path)
     else:
         raise ValueError(f"Invalid technique type: {args.technique_type}")
 

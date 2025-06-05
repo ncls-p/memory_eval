@@ -2,3 +2,21 @@
 .DS_Store
 __pycache__
 .env
+
+# Local AI stack data
+qdrant_storage/
+ollama_models/
+.qdrant/
+
+# Local configuration files
+local_config.json
+*.local.json
+
+# Benchmark result directories
+results/local/
+benchmarks/
+performance_reports/
+
+# Local service logs
+*.log
+logs/
