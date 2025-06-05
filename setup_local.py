@@ -148,8 +148,8 @@ def pull_ollama_models():
     """Pull required Ollama models"""
     load_dotenv()
 
-    model = os.getenv("OLLAMA_MODEL", "llama3.2:3b-instruct-q4_K_M")
-    embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest")
+    model = os.getenv("OLLAMA_MODEL", "qwen3:4b")
+    embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "jeffh/intfloat-multilingual-e5-large-instruct:q8_0")
 
     models_to_pull = [model, embedding_model]
 
