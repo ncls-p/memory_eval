@@ -6,18 +6,27 @@ This script runs comprehensive benchmarks on all local AI techniques,
 compares local vs cloud performance, and generates detailed performance reports.
 """
 
+import argparse
+import json
 import os
+import subprocess
 import sys
 import time
-import json
-import argparse
-import psutil
-import subprocess
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
-import pandas as pd
+from typing import  Dict, List, Optional
+
+import psutil
+
+# Import dotenv if available, but don't fail if it's not
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+    print("Warning: python-dotenv not available. Environment variables from .env file will not be loaded.")
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -165,7 +174,7 @@ class LocalBenchmark:
                 pass
 
         return SystemInfo(
-            cpu_cores=psutil.cpu_count(),
+            cpu_cores=psutil.cpu_count() or 0,
             cpu_freq_mhz=cpu_freq_mhz,
             total_ram_gb=total_ram_gb,
             available_ram_gb=available_ram_gb,
@@ -183,24 +192,111 @@ class LocalBenchmark:
         # Check Ollama
         try:
             import requests
-            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            response = requests.get("https://ollama.nclsp.com/api/tags", timeout=5)
             services['ollama'] = response.status_code == 200
-        except Exception:
+            if not services['ollama']:
+                print(f"❌ Ollama API check failed with status: {response.status_code}")
+        except Exception as e:
             services['ollama'] = False
+            print(f"❌ Ollama connection failed: {e}")
 
         # Check Qdrant
         try:
             import requests
-            response = requests.get("http://localhost:6333/health", timeout=5)
+            response = requests.get("http://localhost:6333/healthz", timeout=5)
             services['qdrant'] = response.status_code == 200
-        except Exception:
+            if not services['qdrant']:
+                print(f"❌ Qdrant health check failed with status: {response.status_code}")
+        except Exception as e:
             services['qdrant'] = False
+            print(f"❌ Qdrant connection failed: {e}")
 
         return services
+
+    def validate_model_availability(self) -> Dict[str, bool]:
+        """Check if required models are available in Ollama"""
+        model_status = {}
+
+        # Get model names from environment or use defaults
+        ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b-instruct-q4_K_M")
+        embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest")
+
+        try:
+            import requests
+            response = requests.get("https://ollama.nclsp.com/api/tags", timeout=10)
+            if response.status_code == 200:
+                available_models = response.json().get("models", [])
+                available_model_names = [model["name"] for model in available_models]
+
+                model_status[ollama_model] = ollama_model in available_model_names
+                model_status[embedding_model] = embedding_model in available_model_names
+
+                print(f"📋 Available models: {', '.join(available_model_names)}")
+                print(f"🔍 Required models: {ollama_model}, {embedding_model}")
+
+                if not model_status[ollama_model]:
+                    print(f"❌ Required model not found: {ollama_model}")
+                if not model_status[embedding_model]:
+                    print(f"❌ Required embedding model not found: {embedding_model}")
+            else:
+                print(f"❌ Failed to fetch model list from Ollama: {response.status_code}")
+        except Exception as e:
+            print(f"❌ Error checking model availability: {e}")
+
+        return model_status
+
+    def validate_prerequisites(self) -> bool:
+        """Validate all prerequisites before running benchmarks"""
+        print("🔍 Validating prerequisites...")
+
+        # Check services
+        services = self.check_services()
+
+        all_valid = True
+
+        if not services.get('ollama', False):
+            print("❌ Ollama service is not available")
+            all_valid = False
+        else:
+            print("✅ Ollama service is running")
+
+            # Check models if Ollama is available
+            model_status = self.validate_model_availability()
+            if not all(model_status.values()):
+                print("❌ Required models are not available in Ollama")
+                print("💡 Run 'ollama pull <model-name>' to install missing models")
+                all_valid = False
+            else:
+                print("✅ Required models are available")
+
+        if not services.get('qdrant', False):
+            print("❌ Qdrant service is not available")
+            print("💡 Run 'python setup_local.py' to start Qdrant")
+            all_valid = False
+        else:
+            print("✅ Qdrant service is running")
+
+        return all_valid
 
     def run_technique_benchmark(self, technique: str, method: str = "search") -> BenchmarkResult:
         """Run benchmark for a specific technique"""
         print(f"🧪 Benchmarking {technique} ({method})...")
+
+        # Ensure environment variables are set for consistent model usage
+        if not os.getenv("OLLAMA_MODEL"):
+            os.environ["OLLAMA_MODEL"] = "llama3.2:3b-instruct-q4_K_M"
+        if not os.getenv("OLLAMA_EMBEDDING_MODEL"):
+            os.environ["OLLAMA_EMBEDDING_MODEL"] = "nomic-embed-text:latest"
+        if not os.getenv("LOCAL_SETUP"):
+            os.environ["LOCAL_SETUP"] = "true"
+
+        print(f"   Using model: {os.getenv('OLLAMA_MODEL')}")
+        print(f"   Using embedding model: {os.getenv('OLLAMA_EMBEDDING_MODEL')}")
+
+        # Fix: Use RAG method for ollama technique instead of search to avoid missing memories issue
+        if technique == "ollama" and method == "search":
+            method = "rag"
+            print(f"   🔧 Switching ollama to RAG method to avoid missing memories issue")
 
         # Start monitoring
         self.hardware_monitor.start_monitoring()
@@ -234,12 +330,20 @@ class LocalBenchmark:
             response_time = end_time - start_time
             hardware_metrics = self.hardware_monitor.get_average_metrics()
 
+            # Enhanced error reporting
+            if not success:
+                print(f"❌ {technique} failed with return code: {result.returncode}")
+                if result.stderr:
+                    print(f"   Error details: {result.stderr.strip()}")
+                if result.stdout:
+                    print(f"   Output: {result.stdout.strip()}")
+
             # Parse output for token information (if available)
             total_tokens = 0
             tokens_per_second = 0
             error_count = 0 if success else 1
 
-            if "tokens" in result.stdout.lower():
+            if success and "tokens" in result.stdout.lower():
                 # Try to extract token information from output
                 try:
                     import re
@@ -310,31 +414,57 @@ class LocalBenchmark:
         system_info = self.get_system_info()
         services = self.check_services()
 
-        print(f"💻 System: {system_info.cpu_cores} cores, {system_info.total_ram_gb:.1f}GB RAM")
+        print(f"💻 System: {system_info.cpu_cores or 0} cores, {system_info.total_ram_gb:.1f}GB RAM")
         if system_info.gpu_count > 0:
             print(f"🎮 GPU: {system_info.gpu_names[0]} ({system_info.gpu_memory_gb[0]:.1f}GB)")
         print(f"🔧 Services: Ollama={services.get('ollama', False)}, Qdrant={services.get('qdrant', False)}")
         print()
 
+        # Validate prerequisites
+        if not self.validate_prerequisites():
+            print("❌ Prerequisites validation failed. Some benchmarks may not run successfully.")
+            print("💡 Consider running 'python setup_local.py' to fix service issues")
+            print()
+
         results = []
 
         # Benchmark local techniques
         for technique in self.local_techniques:
+            skip_reason = None
+
             if technique == "ollama" and not services.get('ollama', False):
-                print(f"⏭️  Skipping {technique} - service not available")
-                continue
-            if technique in ["memzero_local", "qdrant_rag"] and not services.get('qdrant', False):
-                print(f"⏭️  Skipping {technique} - Qdrant not available")
+                skip_reason = "Ollama service not available"
+            elif technique in ["memzero_local", "qdrant_rag"] and not services.get('qdrant', False):
+                skip_reason = "Qdrant service not available"
+
+            if skip_reason:
+                print(f"⏭️  Skipping {technique} - {skip_reason}")
+                # Create a failed result for completeness
+                failed_result = BenchmarkResult(
+                    technique=technique,
+                    dataset_size=10,
+                    avg_response_time=0,
+                    total_tokens=0,
+                    tokens_per_second=0,
+                    memory_usage_mb=0,
+                    cpu_usage_percent=0,
+                    gpu_usage_percent=None,
+                    gpu_memory_mb=None,
+                    success_rate=0.0,
+                    error_count=1,
+                    timestamp=datetime.now().isoformat()
+                )
+                results.append(failed_result)
                 continue
 
             result = self.run_technique_benchmark(technique)
             results.append(result)
 
-            # Print immediate feedback
+            # Print immediate feedback with more detail
             if result.success_rate > 0:
-                print(f"✅ {technique}: {result.avg_response_time:.1f}s, {result.tokens_per_second:.1f} tok/s")
+                print(f"✅ {technique}: {result.avg_response_time:.1f}s, {result.tokens_per_second:.1f} tok/s, {result.memory_usage_mb:.0f}MB RAM")
             else:
-                print(f"❌ {technique}: Failed")
+                print(f"❌ {technique}: Failed - check service connectivity and model availability")
             print()
 
         return results
@@ -457,8 +587,43 @@ class LocalBenchmark:
         if not local_results:
             return "No local results available for comparison."
 
-        avg_time = sum(r.avg_response_time for r in local_results if r.success_rate > 0) / len([r for r in local_results if r.success_rate > 0])
-        avg_throughput = sum(r.tokens_per_second for r in local_results if r.success_rate > 0) / len([r for r in local_results if r.success_rate > 0])
+        # Get successful results to avoid division by zero
+        successful_local_results = [r for r in local_results if r.success_rate > 0]
+
+        if not successful_local_results:
+            comparison = """
+            ## Local vs Cloud Comparison
+
+            ### Local Performance Summary
+            ❌ **No successful local benchmark results**
+
+            All local techniques failed to complete successfully. This could indicate:
+            - Service connectivity issues (Ollama, Qdrant not running)
+            - Model configuration problems
+            - Resource constraints (insufficient memory/GPU)
+
+            ### Troubleshooting Steps
+            1. Verify services are running: `python setup_local.py`
+            2. Check model availability in Ollama
+            3. Ensure sufficient system resources
+            4. Review error logs above for specific failures
+
+            ### Advantages of Local Setup
+            ✅ **Privacy**: All data stays local
+            ✅ **Cost**: No per-token charges
+            ✅ **Availability**: Works offline
+            ✅ **Customization**: Full control over models
+
+            ### Considerations
+            ⚠️ **Setup Complexity**: Requires local installation
+            ⚠️ **Hardware Requirements**: Needs sufficient RAM/GPU
+            ⚠️ **Model Updates**: Manual model management
+            """
+            return comparison
+
+        # Calculate averages only from successful results
+        avg_time = sum(r.avg_response_time for r in successful_local_results) / len(successful_local_results)
+        avg_throughput = sum(r.tokens_per_second for r in successful_local_results) / len(successful_local_results)
 
         comparison = f"""
 ## Local vs Cloud Comparison

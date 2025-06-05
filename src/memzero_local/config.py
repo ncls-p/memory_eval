@@ -16,7 +16,7 @@ def get_local_mem0_config() -> Dict[str, Any]:
     qdrant_host = os.getenv("QDRANT_HOST", "localhost")
     qdrant_port = int(os.getenv("QDRANT_PORT", "6333"))
     ollama_host = os.getenv("OLLAMA_HOST", "localhost")
-    ollama_port = int(os.getenv("OLLAMA_PORT", "11434"))
+    ollama_port = int(os.getenv("OLLAMA_PORT", ""))
     llm_model = os.getenv("LOCAL_LLM_MODEL", "llama3.2")
     embedding_model = os.getenv("LOCAL_EMBEDDING_MODEL", "nomic-embed-text")
 

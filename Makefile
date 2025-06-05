@@ -53,7 +53,7 @@ start-local:
 	@echo "Waiting for Qdrant to be ready..."
 	@sleep 10
 	@echo "Checking Ollama service..."
-	@curl -s http://localhost:11434/api/tags || echo "Ollama not running - please start it manually"
+	@curl -s https://ollama.nclsp.com/api/tags || echo "Ollama not running - please start it manually"
 
 start-full-stack:
 	make setup-directories
@@ -62,7 +62,7 @@ start-full-stack:
 	@sleep 15
 	@echo "Checking services..."
 	@curl -s http://localhost:6333/health && echo "✅ Qdrant ready" || echo "❌ Qdrant not ready"
-	@curl -s http://localhost:11434/api/tags && echo "✅ Ollama ready" || echo "❌ Ollama not ready"
+	@curl -s https://ollama.nclsp.com/api/tags && echo "✅ Ollama ready" || echo "❌ Ollama not ready"
 
 start-with-monitoring:
 	make setup-directories

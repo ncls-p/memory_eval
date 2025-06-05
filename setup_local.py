@@ -131,7 +131,7 @@ def check_ollama():
     print_status("Checking Ollama availability...")
 
     try:
-        response = requests.get("http://localhost:11434/api/version", timeout=5)
+        response = requests.get("https://ollama.nclsp.com/api/version", timeout=5)
         if response.status_code == 200:
             version_data = response.json()
             print_status(f"Ollama is running (version: {version_data.get('version', 'unknown')})", "SUCCESS")
@@ -148,8 +148,8 @@ def pull_ollama_models():
     """Pull required Ollama models"""
     load_dotenv()
 
-    model = os.getenv("OLLAMA_MODEL", "qwen3:4b")
-    embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "jeffh/intfloat-multilingual-e5-large-instruct:q8_0")
+    model = os.getenv("OLLAMA_MODEL", "llama3.2:3b-instruct-q4_K_M")
+    embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest")
 
     models_to_pull = [model, embedding_model]
 
@@ -184,7 +184,7 @@ def validate_setup():
 
     # Check Ollama
     try:
-        response = requests.get("http://localhost:11434/api/version", timeout=5)
+        response = requests.get("https://ollama.nclsp.com/api/version", timeout=5)
         if response.status_code == 200:
             print_status("✓ Ollama is accessible", "SUCCESS")
         else:
