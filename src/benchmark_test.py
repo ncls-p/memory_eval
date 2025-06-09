@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import argparse
 
 import numpy as np
 import openai
@@ -202,7 +203,7 @@ def evaluate_with_llm_judge(context_text, question, reference_answer, generated_
         return default_evaluation
 
 
-def populate_memories(config_manager, qdrant_connector):
+def populate_memories(config_manager, qdrant_connector, conversation_ids=None):
     """
     Populates the memory systems with conversation data from the dataset.
     One memory collection per speaker.
@@ -219,19 +220,35 @@ def populate_memories(config_manager, qdrant_connector):
         print(f"Error: Could not parse dataset file {DATASET_PATH}")
         return None, None, None, None
 
-    data = dataset.get("0", {})
-    if not data:
-        print(f"Error: Dataset at {DATASET_PATH} does not contain the expected '0' key.")
+    conversations_to_process = []
+    if conversation_ids:
+        for conv_id in conversation_ids:
+            if str(conv_id) in dataset:
+                conversations_to_process.append(dataset[str(conv_id)])
+            else:
+                print(f"Warning: Conversation ID {conv_id} not found in dataset.")
+    else:
+        conversations_to_process = list(dataset.values())
+
+    if not conversations_to_process:
+        print("Error: No conversations to process.")
         return None, None, None, None
 
-    conversation = data.get("conversation", [])
-    qa_pairs = data.get("question", [])
-
+    all_conversations = []
+    all_qa_pairs = []
     speakers = set()
-    if conversation:
-        for turn in conversation:
-            if "speaker" in turn:
-                speakers.add(turn["speaker"])
+
+    for data in conversations_to_process:
+        conversation = data.get("conversation", [])
+        qa_pairs = data.get("question", [])
+
+        all_conversations.extend(conversation)
+        all_qa_pairs.extend(qa_pairs)
+
+        if conversation:
+            for turn in conversation:
+                if "speaker" in turn:
+                    speakers.add(turn["speaker"])
 
     print(f"Found speakers: {list(speakers)}")
 
@@ -254,8 +271,8 @@ def populate_memories(config_manager, qdrant_connector):
         )
         print(f"Initialized LangMemSystem for {speaker} with collection {collection_name}")
 
-    if conversation:
-        for turn in conversation:
+    if all_conversations:
+        for turn in all_conversations:
             speaker = turn.get("speaker")
             text = turn.get("text")
             if speaker and text:
@@ -265,7 +282,7 @@ def populate_memories(config_manager, qdrant_connector):
                     langmem_systems[speaker].add(messages=[{"role": "user", "content": text}])
 
     print("Finished populating memories.")
-    return mem0_systems, langmem_systems, list(speakers), qa_pairs
+    return mem0_systems, langmem_systems, list(speakers), all_qa_pairs
 
 
 def run_evaluation(mem0_systems, langmem_systems, speakers, qa_pairs):
@@ -404,7 +421,7 @@ def cleanup(qdrant_connector, langmem_systems, mem0_systems):
     print("Cleanup finished.")
 
 
-def run_benchmark():
+def run_benchmark(conversation_ids=None):
     if (
         not config_manager.ollama_base_url
         or not config_manager.llm_model_name
@@ -427,7 +444,7 @@ def run_benchmark():
     original_langchain_collection_name = config_manager.qdrant_langchain_collection
 
     mem0_systems, langmem_systems, speakers, qa_pairs = populate_memories(
-        config_manager, qdrant_connector
+        config_manager, qdrant_connector, conversation_ids
     )
     if not mem0_systems:
         print("Failed to populate memories. Aborting benchmark.")
@@ -452,4 +469,17 @@ def run_benchmark():
 
 
 if __name__ == "__main__":
-    run_benchmark()
+    parser = argparse.ArgumentParser(description="Run the memory benchmark.")
+    parser.add_argument(
+        "--conversations",
+        nargs="+",
+        type=int,
+        help="List of conversation IDs to run, or 'all' to run all conversations.",
+    )
+    args = parser.parse_args()
+
+    conversation_ids = args.conversations
+    if conversation_ids and "all" in [str(c).lower() for c in conversation_ids]:
+        conversation_ids = None
+
+    run_benchmark(conversation_ids=conversation_ids)
