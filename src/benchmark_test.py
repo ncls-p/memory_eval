@@ -8,13 +8,12 @@ from dotenv import load_dotenv
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge_score import rouge_scorer
 
-from test import ConfigManager, LangChainLangMemSystem, Mem0System, QdrantConnector
+from src.test import ConfigManager, LangChainLangMemSystem, Mem0System, QdrantConnector
 
 load_dotenv()
 config_manager = ConfigManager()
 
-CONVERSATION_DATASET_PATH = "dataset/locomo10_rag.json"
-QA_DATASET_PATH = "dataset/locomo10.json"
+DATASET_PATH = "dataset/locomo10_rag.json"
 
 
 def calculate_rouge_scores(reference, generated):
@@ -207,28 +206,34 @@ def populate_memories(config_manager, qdrant_connector):
     """
     Populates the memory systems with conversation data from the dataset.
     One memory collection per speaker.
+    Also extracts QA pairs for evaluation.
     """
-    print("Populating memories for each speaker...")
+    print("Populating memories and extracting QA pairs...")
     try:
-        with open(CONVERSATION_DATASET_PATH, "r") as f:
+        with open(DATASET_PATH, "r") as f:
             dataset = json.load(f)
     except FileNotFoundError:
-        print(f"Error: Dataset file not found at {CONVERSATION_DATASET_PATH}")
-        return None, None, None
+        print(f"Error: Dataset file not found at {DATASET_PATH}")
+        return None, None, None, None
     except json.JSONDecodeError:
-        print(f"Error: Could not parse dataset file {CONVERSATION_DATASET_PATH}")
-        return None, None, None
+        print(f"Error: Could not parse dataset file {DATASET_PATH}")
+        return None, None, None, None
+
+    data = dataset.get("0", {})
+    if not data:
+        print(f"Error: Dataset at {DATASET_PATH} does not contain the expected '0' key.")
+        return None, None, None, None
+
+    conversation = data.get("conversation", [])
+    qa_pairs = data.get("question", [])
 
     speakers = set()
-    conversations = []
-    for sample in dataset.values():
-        if "conversation" in sample:
-            conversations.append(sample["conversation"])
-            for turn in sample["conversation"]:
-                if "speaker" in turn:
-                    speakers.add(turn["speaker"])
+    if conversation:
+        for turn in conversation:
+            if "speaker" in turn:
+                speakers.add(turn["speaker"])
 
-    print(f"Found speakers: {speakers}")
+    print(f"Found speakers: {list(speakers)}")
 
     mem0_systems = {}
     for speaker in speakers:
@@ -249,42 +254,28 @@ def populate_memories(config_manager, qdrant_connector):
         )
         print(f"Initialized LangMemSystem for {speaker} with collection {collection_name}")
 
-    for conversation in conversations:
+    if conversation:
         for turn in conversation:
             speaker = turn.get("speaker")
             text = turn.get("text")
             if speaker and text:
                 if speaker in mem0_systems:
                     mem0_systems[speaker].add(messages=[{"role": "user", "content": text}], user_id=speaker)
-
                 if speaker in langmem_systems:
                     langmem_systems[speaker].add(messages=[{"role": "user", "content": text}])
 
     print("Finished populating memories.")
-    return mem0_systems, langmem_systems, list(speakers)
+    return mem0_systems, langmem_systems, list(speakers), qa_pairs
 
 
-def run_evaluation(mem0_systems, langmem_systems, speakers):
+def run_evaluation(mem0_systems, langmem_systems, speakers, qa_pairs):
     """
     Runs the evaluation using QA pairs, querying the appropriate speaker's memory.
     """
     print("Starting evaluation...")
-    try:
-        with open(QA_DATASET_PATH, "r") as f:
-            qa_dataset = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Dataset file not found at {QA_DATASET_PATH}")
+    if not qa_pairs:
+        print("No QA pairs to evaluate.")
         return
-    except json.JSONDecodeError:
-        print(f"Error: Could not parse dataset file {QA_DATASET_PATH}")
-        return
-
-    qa_pairs = []
-    for sample in qa_dataset:
-        if "qa" in sample and isinstance(sample["qa"], list):
-            for qa_pair in sample["qa"]:
-                if qa_pair.get("question") and qa_pair.get("answer"):
-                    qa_pairs.append(qa_pair)
 
     results_mem0 = {
         "rouge1_f1": [], "rouge2_f1": [], "rougeL_f1": [], "bleu": [], "f1": [],
@@ -296,8 +287,12 @@ def run_evaluation(mem0_systems, langmem_systems, speakers):
     }
 
     for i, qa_pair in enumerate(qa_pairs):
-        question = qa_pair["question"]
-        reference_answer = str(qa_pair["answer"])
+        question = qa_pair.get("question")
+        reference_answer = str(qa_pair.get("answer"))
+        if not question or not reference_answer:
+            print(f"Skipping invalid QA pair at index {i}: {qa_pair}")
+            continue
+
         print(f"\nProcessing QA pair {i + 1}/{len(qa_pairs)}: {question}")
 
         mentioned_speakers = [s for s in speakers if re.search(r'\b' + re.escape(s) + r'\b', question, re.IGNORECASE)]
@@ -431,12 +426,14 @@ def run_benchmark():
 
     original_langchain_collection_name = config_manager.qdrant_langchain_collection
 
-    mem0_systems, langmem_systems, speakers = populate_memories(config_manager, qdrant_connector)
+    mem0_systems, langmem_systems, speakers, qa_pairs = populate_memories(
+        config_manager, qdrant_connector
+    )
     if not mem0_systems:
         print("Failed to populate memories. Aborting benchmark.")
         return
 
-    run_evaluation(mem0_systems, langmem_systems, speakers)
+    run_evaluation(mem0_systems, langmem_systems, speakers, qa_pairs)
 
     cleanup(qdrant_connector, langmem_systems, mem0_systems)
 
