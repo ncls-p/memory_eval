@@ -1,0 +1,5 @@
+.venv/
+chroma_db_mem0/
+__pycache__/
+.env
+qdrant_storage/
