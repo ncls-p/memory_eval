@@ -30,19 +30,26 @@ from test import (
 
 load_dotenv()
 
-# Global configuration
 CONFIG_MANAGER = ConfigManager()
 
-# File paths
 DATASET_PATH = Path("dataset/locomo10_rag.json")
 RESULTS_FILE = Path("benchmark_results.json")
 SYSTEMS_STATE_FILE = Path("benchmark_systems_state.json")
 
 
+def remove_think_tags(text: str) -> str:
+    """Remove <think>...</think> sections from text."""
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    cleaned = ' '.join(cleaned.split())
+    return cleaned.strip()
+
+
 def calculate_rouge_scores(reference: str, generated: str) -> Dict[str, float]:
     """Calculate ROUGE scores between reference and generated text."""
+    generated_clean = remove_think_tags(generated)
+
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
-    scores = scorer.score(reference, generated)
+    scores = scorer.score(reference, generated_clean)
     return {
         "rouge1_f1": scores["rouge1"].fmeasure,
         "rouge2_f1": scores["rouge2"].fmeasure,
@@ -52,8 +59,10 @@ def calculate_rouge_scores(reference: str, generated: str) -> Dict[str, float]:
 
 def calculate_bleu_score(reference: str, generated: str) -> float:
     """Calculate BLEU score between reference and generated text."""
+    generated_clean = remove_think_tags(generated)
+
     reference_tokens = [reference.split()]
-    generated_tokens = generated.split()
+    generated_tokens = generated_clean.split()
     smoothie = SmoothingFunction().method4
     score = sentence_bleu(
         reference_tokens, generated_tokens, smoothing_function=smoothie
@@ -67,8 +76,10 @@ def calculate_bleu_score(reference: str, generated: str) -> float:
 
 def calculate_f1_score_binary(reference: str, generated: str) -> float:
     """Calculate binary F1 score based on token overlap."""
+    generated_clean = remove_think_tags(generated)
+
     ref_tokens = set(reference.lower().split())
-    gen_tokens = set(generated.lower().split())
+    gen_tokens = set(generated_clean.lower().split())
 
     if not ref_tokens and not gen_tokens:
         return 1.0
@@ -163,8 +174,8 @@ def evaluate_with_llm_judge(
     judge_system_prompt = (
         "You are an impartial judge evaluating the quality of an AI-generated answer "
         "based on a question and a reference answer. Score the generated answer on a "
-        "scale of 1 to 5 for relevance, coherence, and correctness, then provide an "
-        "overall score from 1 to 5 and a brief justification. "
+        "scale of 1 to 10 for relevance, coherence, and correctness, then provide an "
+        "overall score from 1 to 10 and a brief justification. "
         "Ensure your output includes lines like 'Relevance: X', 'Coherence: Y', "
         "'Correctness: Z', 'Overall Score: W', and 'Justification: ...'."
     )
@@ -247,7 +258,6 @@ def write_result_to_file(
 ) -> None:
     """Append a single result to the JSON file immediately."""
     try:
-        # Try to read existing file
         if filename.exists():
             with filename.open("r", encoding="utf-8") as f:
                 try:
@@ -259,10 +269,8 @@ def write_result_to_file(
         else:
             existing_data = []
 
-        # Append new result
         existing_data.append(result_data)
 
-        # Write back to file
         with filename.open("w", encoding="utf-8") as f:
             json.dump(existing_data, f, indent=2, ensure_ascii=False)
 
@@ -345,7 +353,6 @@ def load_systems_state(
         mem0_collections = state_data.get("mem0_collections", {})
         langmem_collections = state_data.get("langmem_collections", {})
 
-        # Recreate memory systems
         mem0_systems = {}
         for speaker in speakers:
             collection_name = mem0_collections.get(speaker)
@@ -479,7 +486,6 @@ def run_evaluation(
     """Run the evaluation using QA pairs, querying the appropriate speaker's memory."""
     print("Starting evaluation...")
 
-    # Initialize the results file
     initialize_results_file()
     print(f"Initialized results file: {RESULTS_FILE}")
 
@@ -553,7 +559,6 @@ def run_evaluation(
                     context_for_judge, question, reference_answer, generated_answer_mem0
                 )
 
-                # Store for summary statistics
                 results_mem0["rouge1_f1"].append(rouge_scores["rouge1_f1"])
                 results_mem0["rouge2_f1"].append(rouge_scores["rouge2_f1"])
                 results_mem0["rougeL_f1"].append(rouge_scores["rougeL_f1"])
@@ -572,7 +577,6 @@ def run_evaluation(
                     float(llm_eval.get("overall_score", 0))
                 )
 
-                # Write individual result to file immediately
                 result_data = {
                     "qa_pair_index": i + 1,
                     "question": question,
@@ -627,7 +631,6 @@ def run_evaluation(
                     generated_answer_langmem,
                 )
 
-                # Store for summary statistics
                 results_langmem["rouge1_f1"].append(rouge_scores["rouge1_f1"])
                 results_langmem["rouge2_f1"].append(rouge_scores["rouge2_f1"])
                 results_langmem["rougeL_f1"].append(rouge_scores["rougeL_f1"])
@@ -646,7 +649,6 @@ def run_evaluation(
                     float(llm_eval.get("overall_score", 0))
                 )
 
-                # Write individual result to file immediately
                 result_data = {
                     "qa_pair_index": i + 1,
                     "question": question,
@@ -754,7 +756,6 @@ def run_populate_step(
         print("Failed to populate memories.")
         return False
 
-    # Save state for other steps
     save_systems_state(mem0_systems, langmem_systems, speakers, qa_pairs)
     print("Populate step completed successfully.")
     return True
@@ -800,7 +801,6 @@ def run_cleanup_step(
 
     cleanup(qdrant_connector, langmem_systems, mem0_systems)
 
-    # Remove state file after cleanup
     try:
         if SYSTEMS_STATE_FILE.exists():
             SYSTEMS_STATE_FILE.unlink()
@@ -818,7 +818,7 @@ def run_benchmark(
 ) -> None:
     """Run the benchmark with optional step selection."""
     if steps is None:
-        steps = ["populate", "benchmark", "cleanup"]  # Default: run all steps
+        steps = ["populate", "benchmark", "cleanup"]
 
     print(f"Running steps: {', '.join(steps)}")
 
