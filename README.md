@@ -49,19 +49,111 @@ These instructions will get you a copy of the project up and running on your loc
     pip install -r requirements.txt
     ```
 
+## Configuration
+
+Before running the benchmark, you need to set up environment variables. Create a `.env` file in the project root:
+
+```bash
+# Ollama configuration
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL_NAME=llama3.2:latest
+OLLAMA_EMBEDDING_MODEL_NAME=nomic-embed-text
+
+# Qdrant configuration
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+
+# OpenAI API configuration (for LLM judge evaluation)
+OPENAI_API_KEY=your_api_key_here
+OPENAI_API_URL=https://api.openai.com/v1
+OPENAI_MODEL_NAME=gpt-4
+```
+
 ## Usage
 
-To run the benchmark, execute the following command:
+The benchmark script supports flexible execution with command-line options:
+
+### Basic Usage
+
+Run the full benchmark on all conversations:
 
 ```bash
 python src/benchmark_test.py
 ```
 
 This will:
-1.  Populate the memory systems with data from the `dataset/locomo10_rag.json` file.
-2.  Run the evaluation on both `Mem0System` and `LangChainLangMemSystem`.
-3.  Print the average scores for each system.
-4.  Clean up the Qdrant collections.
+1. Populate the memory systems with data from the `dataset/locomo10_rag.json` file
+2. Run the evaluation on both `Mem0System` and `LangChainLangMemSystem`
+3. Save results to `benchmark_results.json`
+4. Clean up the Qdrant collections
+
+### Running Specific Conversations
+
+To benchmark specific conversation IDs:
+
+```bash
+python src/benchmark_test.py --conversations 1 2 3
+```
+
+### Step-by-Step Execution
+
+The benchmark process can be broken down into three independent steps:
+
+1. **Populate**: Load conversations into memory systems
+   ```bash
+   python src/benchmark_test.py --steps populate
+   ```
+
+2. **Benchmark**: Run evaluation on populated memory systems
+   ```bash
+   python src/benchmark_test.py --steps benchmark
+   ```
+
+3. **Cleanup**: Remove Qdrant collections
+   ```bash
+   python src/benchmark_test.py --steps cleanup
+   ```
+
+You can combine steps as needed:
+```bash
+# Run populate and benchmark only (skip cleanup)
+python src/benchmark_test.py --steps populate benchmark
+
+# Run only the benchmark step (requires previous populate)
+python src/benchmark_test.py --steps benchmark
+```
+
+### Advanced Examples
+
+```bash
+# Benchmark conversations 1, 2, and 3 with all steps
+python src/benchmark_test.py --conversations 1 2 3
+
+# Populate specific conversations without running benchmark
+python src/benchmark_test.py --conversations 5 6 --steps populate
+
+# Run benchmark and cleanup on previously populated data
+python src/benchmark_test.py --steps benchmark cleanup
+```
+
+### Output Files
+
+- **`benchmark_results.json`**: Contains detailed results for each QA pair evaluation
+- **`benchmark_systems_state.json`**: Stores state between steps (automatically managed)
+
+## Simple Test
+
+For a quick comparison of memory systems without the full benchmark suite:
+
+```bash
+python src/test.py
+```
+
+This runs a simple test that:
+- Creates memory instances for both systems
+- Adds sample conversation data
+- Performs basic searches
+- Compares retrieval results
 
 ## Benchmarking
 
