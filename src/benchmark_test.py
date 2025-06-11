@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -177,7 +178,8 @@ def evaluate_with_llm_judge(
         "scale of 1 to 10 for relevance, coherence, and correctness, then provide an "
         "overall score from 1 to 10 and a brief justification. "
         "Ensure your output includes lines like 'Relevance: X', 'Coherence: Y', "
-        "'Correctness: Z', 'Overall Score: W', and 'Justification: ...'."
+        "'Correctness: Z', 'Overall Score: W', and 'Justification: ...'. "
+        "IMPORTANT: Keep your justification concise - maximum 100 tokens."
     )
 
     judge_user_prompt_content = f"""Context:
@@ -505,8 +507,14 @@ def run_evaluation(
         "llm_judge_overall",
     ]
 
-    results_mem0: Dict[str, List[float]] = {key: [] for key in metric_keys}
-    results_langmem: Dict[str, List[float]] = {key: [] for key in metric_keys}
+    timing_keys = [
+        "memory_retrieval_seconds",
+        "llm_response_seconds",
+        "total_seconds",
+    ]
+
+    results_mem0: Dict[str, List[float]] = {key: [] for key in metric_keys + timing_keys}
+    results_langmem: Dict[str, List[float]] = {key: [] for key in metric_keys + timing_keys}
 
     for i, qa_pair in enumerate(qa_pairs):
         question = qa_pair.get("question")
@@ -539,12 +547,19 @@ def run_evaluation(
         try:
             mem0_sys = mem0_systems.get(speaker_to_query)
             if mem0_sys:
+                # Time memory retrieval
+                retrieval_start = time.time()
                 memories_mem0 = mem0_sys.search(
                     query=question, user_id=speaker_to_query
                 )
+                retrieval_time_mem0 = time.time() - retrieval_start
+
+                # Time LLM response generation
+                llm_start = time.time()
                 generated_answer_mem0 = mem0_sys.get_llm_response(
                     query=question, memories=memories_mem0
                 )
+                llm_time_mem0 = time.time() - llm_start
 
                 rouge_scores = calculate_rouge_scores(
                     reference_answer, generated_answer_mem0
@@ -577,6 +592,11 @@ def run_evaluation(
                     float(llm_eval.get("overall_score", 0))
                 )
 
+                # Add timing metrics
+                results_mem0["memory_retrieval_seconds"].append(retrieval_time_mem0)
+                results_mem0["llm_response_seconds"].append(llm_time_mem0)
+                results_mem0["total_seconds"].append(retrieval_time_mem0 + llm_time_mem0)
+
                 result_data = {
                     "qa_pair_index": i + 1,
                     "question": question,
@@ -596,11 +616,17 @@ def run_evaluation(
                         "llm_judge_overall": llm_eval.get("overall_score", 0),
                         "llm_judge_justification": llm_eval.get("justification", ""),
                     },
+                    "timing": {
+                        "memory_retrieval_seconds": retrieval_time_mem0,
+                        "llm_response_seconds": llm_time_mem0,
+                        "total_seconds": retrieval_time_mem0 + llm_time_mem0,
+                    },
                     "timestamp": datetime.now().isoformat(),
                 }
                 write_result_to_file(result_data)
 
                 print(f"    Mem0 Generated: {generated_answer_mem0[:100]}...")
+                print(f"    Mem0 Timing: Retrieval={retrieval_time_mem0:.3f}s, LLM={llm_time_mem0:.3f}s")
             else:
                 print(f"    Mem0System not found for speaker: {speaker_to_query}")
 
@@ -610,10 +636,17 @@ def run_evaluation(
         try:
             langmem_sys = langmem_systems.get(speaker_to_query)
             if langmem_sys:
+                # Time memory retrieval
+                retrieval_start = time.time()
                 memories_langmem = langmem_sys.search(query=question)
+                retrieval_time_langmem = time.time() - retrieval_start
+
+                # Time LLM response generation
+                llm_start = time.time()
                 generated_answer_langmem = langmem_sys.get_llm_response(
                     query=question, memories=memories_langmem
                 )
+                llm_time_langmem = time.time() - llm_start
 
                 rouge_scores = calculate_rouge_scores(
                     reference_answer, generated_answer_langmem
@@ -649,6 +682,11 @@ def run_evaluation(
                     float(llm_eval.get("overall_score", 0))
                 )
 
+                # Add timing metrics
+                results_langmem["memory_retrieval_seconds"].append(retrieval_time_langmem)
+                results_langmem["llm_response_seconds"].append(llm_time_langmem)
+                results_langmem["total_seconds"].append(retrieval_time_langmem + llm_time_langmem)
+
                 result_data = {
                     "qa_pair_index": i + 1,
                     "question": question,
@@ -668,11 +706,17 @@ def run_evaluation(
                         "llm_judge_overall": llm_eval.get("overall_score", 0),
                         "llm_judge_justification": llm_eval.get("justification", ""),
                     },
+                    "timing": {
+                        "memory_retrieval_seconds": retrieval_time_langmem,
+                        "llm_response_seconds": llm_time_langmem,
+                        "total_seconds": retrieval_time_langmem + llm_time_langmem,
+                    },
                     "timestamp": datetime.now().isoformat(),
                 }
                 write_result_to_file(result_data)
 
                 print(f"    LangMem Generated: {generated_answer_langmem[:100]}...")
+                print(f"    LangMem Timing: Retrieval={retrieval_time_langmem:.3f}s, LLM={llm_time_langmem:.3f}s")
             else:
                 print(f"    LangMemSystem not found for speaker: {speaker_to_query}")
 
@@ -693,7 +737,12 @@ def run_evaluation(
         for metric, values in results_dict.items():
             if values:
                 avg_score = np.mean(values)
-                print(f"  Average {metric.replace('_', ' ').title()}: {avg_score:.4f}")
+                # Format timing metrics differently
+                if metric.endswith("_seconds"):
+                    metric_display = metric.replace('_seconds', '').replace('_', ' ').title()
+                    print(f"  Average {metric_display} Time: {avg_score:.3f} seconds")
+                else:
+                    print(f"  Average {metric.replace('_', ' ').title()}: {avg_score:.4f}")
             else:
                 print(f"  Average {metric.replace('_', ' ').title()}: N/A (no data)")
 
