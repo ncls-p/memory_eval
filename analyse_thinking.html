@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memory System Performance Analysis</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #333;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+      }
+
+      h1 {
+        text-align: center;
+        color: #2c3e50;
+        margin-bottom: 10px;
+        font-size: 2.5em;
+        font-weight: 700;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: #7f8c8d;
+        margin-bottom: 40px;
+        font-size: 1.2em;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 40px;
+      }
+
+      .summary-card {
+        background: linear-gradient(135deg, #74b9ff, #0984e3);
+        color: white;
+        padding: 25px;
+        border-radius: 15px;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(116, 185, 255, 0.3);
+        transition: transform 0.3s ease;
+      }
+
+      .summary-card:hover {
+        transform: translateY(-5px);
+      }
+
+      .summary-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 1.1em;
+        opacity: 0.9;
+      }
+
+      .summary-card .value {
+        font-size: 2.5em;
+        font-weight: bold;
+        margin: 10px 0;
+      }
+
+      .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+        gap: 30px;
+        margin-bottom: 40px;
+      }
+
+      .chart-container {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e1e8ed;
+      }
+
+      .chart-title {
+        font-size: 1.4em;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      canvas {
+        max-width: 100%;
+        height: 400px !important;
+      }
+
+      .metrics-table {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        margin-top: 30px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+      }
+
+      th,
+      td {
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 1px solid #e1e8ed;
+      }
+
+      th {
+        background: linear-gradient(135deg, #74b9ff, #0984e3);
+        color: white;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+      }
+
+      tr:hover {
+        background-color: #f8f9fa;
+      }
+
+      .system-mem0 {
+        color: #e17055;
+        font-weight: bold;
+      }
+      .system-langchain {
+        color: #0984e3;
+        font-weight: bold;
+      }
+
+      .winner {
+        background: linear-gradient(135deg, #00b894, #00a085);
+        color: white;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.85em;
+        font-weight: bold;
+      }
+
+      .performance-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+
+      .excellent {
+        background-color: #00b894;
+      }
+      .good {
+        background-color: #74b9ff;
+      }
+      .average {
+        background-color: #fdcb6e;
+      }
+      .poor {
+        background-color: #e17055;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Memory System Performance Analysis</h1>
+      <p class="subtitle">
+        Comparative evaluation of Mem0System vs LangChainLangMemSystem
+      </p>
+
+      <div class="summary-grid">
+        <div class="summary-card">
+          <h3>Total Evaluations</h3>
+          <div class="value" id="totalEvals">-</div>
+        </div>
+        <div class="summary-card">
+          <h3>Questions Tested</h3>
+          <div class="value" id="totalQuestions">-</div>
+        </div>
+        <div class="summary-card">
+          <h3>Systems Compared</h3>
+          <div class="value" id="totalSystems">-</div>
+        </div>
+        <div class="summary-card">
+          <h3>Metrics Analyzed</h3>
+          <div class="value" id="totalMetrics">-</div>
+        </div>
+      </div>
+
+      <div class="chart-grid">
+        <div class="chart-container">
+          <div class="chart-title">📊 Overall Performance Comparison</div>
+          <canvas id="overallChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <div class="chart-title">🎯 LLM Judge Scores</div>
+          <canvas id="llmJudgeChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <div class="chart-title">📝 NLP Metrics Performance</div>
+          <canvas id="nlpMetricsChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <div class="chart-title">⚡ Response Time Analysis</div>
+          <canvas id="timingChart"></canvas>
+        </div>
+      </div>
+
+      <div class="metrics-table">
+        <div class="chart-title">📋 Detailed Performance Metrics</div>
+        <table id="detailedMetrics">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Mem0System</th>
+              <th>LangChainLangMemSystem</th>
+              <th>Winner</th>
+              <th>Difference</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      // Load actual data from benchmark_results.json
+      let benchmarkData = [];
+
+      // Try to load data from a script tag first, then fall back to fetch
+      if (typeof BENCHMARK_DATA !== 'undefined') {
+        benchmarkData = BENCHMARK_DATA;
+        initializeDashboard();
+      } else {
+        // Fetch the data (works when served via HTTP)
+        fetch("benchmark_results.json")
+          .then((response) => response.json())
+          .then((data) => {
+            benchmarkData = data;
+            initializeDashboard();
+          })
+          .catch((error) => {
+            console.error("Error loading data:", error);
+            // For file:// protocol, we need to handle this differently
+            alert("Please serve this file via a web server (e.g., python -m http.server) to load the benchmark data, or add a <script> tag with BENCHMARK_DATA variable containing the JSON data.");
+            loadInlineData();
+          });
+      }
+
+      function loadInlineData() {
+        // This function will be called if the external file can't be loaded
+        // For now, we'll initialize with empty data
+        benchmarkData = [];
+        initializeDashboard();
+      }
+
+      function processData() {
+        if (!benchmarkData || benchmarkData.length === 0) {
+          return processEmptyData();
+        }
+
+        const systems = ["Mem0System", "LangChainLangMemSystem"];
+        const metrics = [
+          "rouge1_f1",
+          "rouge2_f1",
+          "rougeL_f1",
+          "bleu",
+          "f1",
+          "llm_judge_relevance",
+          "llm_judge_coherence",
+          "llm_judge_correctness",
+          "llm_judge_overall",
+        ];
+
+        const systemStats = {};
+        const timingData = { Mem0System: [], LangChainLangMemSystem: [] };
+
+        systems.forEach((system) => {
+          systemStats[system] = {};
+          const systemData = benchmarkData.filter((d) => d.system === system);
+
+          metrics.forEach((metric) => {
+            const values = systemData.map((d) => d.metrics[metric] || 0);
+            const avg =
+              values.length > 0
+                ? values.reduce((sum, val) => sum + val, 0) / values.length
+                : 0;
+
+            systemStats[system][metric] = {
+              avg: avg,
+              values: values,
+              min: values.length > 0 ? Math.min(...values) : 0,
+              max: values.length > 0 ? Math.max(...values) : 0,
+            };
+          });
+
+          // Collect timing data
+          systemData.forEach((d) => {
+            if (d.timing && d.timing.total_seconds) {
+              timingData[system].push(d.timing.total_seconds);
+            }
+          });
+        });
+
+        // Calculate summary statistics
+        const uniqueQuestions = [
+          ...new Set(benchmarkData.map((d) => d.qa_pair_index)),
+        ].length;
+        const totalEvals = benchmarkData.length;
+
+        return {
+          systemStats,
+          systems,
+          metrics,
+          timingData,
+          uniqueQuestions,
+          totalEvals,
+        };
+      }
+
+      function processEmptyData() {
+        // Fallback for when no data is available
+        const systems = ["Mem0System", "LangChainLangMemSystem"];
+        const metrics = [
+          "rouge1_f1",
+          "rouge2_f1",
+          "rougeL_f1",
+          "bleu",
+          "f1",
+          "llm_judge_relevance",
+          "llm_judge_coherence",
+          "llm_judge_correctness",
+          "llm_judge_overall",
+        ];
+
+        const systemStats = {};
+        const timingData = { Mem0System: [], LangChainLangMemSystem: [] };
+
+        systems.forEach((system) => {
+          systemStats[system] = {};
+          metrics.forEach((metric) => {
+            systemStats[system][metric] = {
+              avg: 0,
+              values: [],
+              min: 0,
+              max: 0,
+            };
+          });
+        });
+
+        return {
+          systemStats,
+          systems,
+          metrics,
+          timingData,
+          uniqueQuestions: 0,
+          totalEvals: 0,
+        };
+      }
+
+      function createOverallChart(systemStats, systems) {
+        const ctx = document.getElementById("overallChart").getContext("2d");
+
+        const overallScores = systems.map(
+          (system) => systemStats[system]["llm_judge_overall"].avg
+        );
+
+        new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: systems,
+            datasets: [
+              {
+                label: "Overall Performance Score",
+                data: overallScores,
+                backgroundColor: ["#e17055", "#74b9ff"],
+                borderColor: ["#d63031", "#0984e3"],
+                borderWidth: 2,
+                borderRadius: 8,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 10,
+                grid: { color: "#f1f3f4" },
+              },
+              x: { grid: { display: false } },
+            },
+          },
+        });
+      }
+
+      function createLLMJudgeChart(systemStats, systems) {
+        const ctx = document.getElementById("llmJudgeChart").getContext("2d");
+
+        const llmMetrics = [
+          "llm_judge_relevance",
+          "llm_judge_coherence",
+          "llm_judge_correctness",
+          "llm_judge_overall",
+        ];
+
+        new Chart(ctx, {
+          type: "radar",
+          data: {
+            labels: llmMetrics.map(
+              (m) =>
+                m.replace("llm_judge_", "").charAt(0).toUpperCase() +
+                m.replace("llm_judge_", "").slice(1)
+            ),
+            datasets: systems.map((system, idx) => ({
+              label: system,
+              data: llmMetrics.map((metric) => systemStats[system][metric].avg),
+              borderColor: idx === 0 ? "#e17055" : "#74b9ff",
+              backgroundColor:
+                idx === 0
+                  ? "rgba(225, 112, 85, 0.2)"
+                  : "rgba(116, 185, 255, 0.2)",
+              borderWidth: 3,
+              pointBackgroundColor: idx === 0 ? "#e17055" : "#74b9ff",
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              r: {
+                beginAtZero: true,
+                max: 10,
+                grid: { color: "#f1f3f4" },
+              },
+            },
+          },
+        });
+      }
+
+      function createNLPMetricsChart(systemStats, systems) {
+        const ctx = document.getElementById("nlpMetricsChart").getContext("2d");
+
+        const nlpMetrics = [
+          "rouge1_f1",
+          "rouge2_f1",
+          "rougeL_f1",
+          "bleu",
+          "f1",
+        ];
+
+        new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: nlpMetrics.map((m) => m.toUpperCase()),
+            datasets: systems.map((system, idx) => ({
+              label: system,
+              data: nlpMetrics.map((metric) => systemStats[system][metric].avg),
+              backgroundColor: idx === 0 ? "#e17055" : "#74b9ff",
+              borderColor: idx === 0 ? "#d63031" : "#0984e3",
+              borderWidth: 2,
+              borderRadius: 8,
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "top" },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 0.3,
+                grid: { color: "#f1f3f4" },
+              },
+              x: { grid: { display: false } },
+            },
+          },
+        });
+      }
+
+      function createTimingChart(timingData) {
+        const ctx = document.getElementById("timingChart").getContext("2d");
+
+        // Prepare data for chart
+        const maxLength = Math.max(timingData['Mem0System'].length, timingData['LangChainLangMemSystem'].length);
+        const labels = Array.from({length: maxLength}, (_, i) => `Eval ${i + 1}`);
+
+        new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: Object.entries(timingData).map(([system, data], idx) => ({
+              label: system,
+              data: data,
+              borderColor: idx === 0 ? "#e17055" : "#74b9ff",
+              backgroundColor:
+                idx === 0
+                  ? "rgba(225, 112, 85, 0.1)"
+                  : "rgba(116, 185, 255, 0.1)",
+              borderWidth: 3,
+              fill: true,
+              tension: 0.4,
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "top" },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: "Response Time (seconds)" },
+                grid: { color: "#f1f3f4" },
+              },
+              x: {
+                title: { display: true, text: "Evaluations" },
+                grid: { display: false },
+              },
+            },
+          },
+        });
+      }
+
+      function createMetricsTable(systemStats, systems, metrics) {
+        const tbody = document.querySelector("#detailedMetrics tbody");
+
+        metrics.forEach((metric) => {
+          const row = document.createElement("tr");
+          const mem0Score = systemStats["Mem0System"][metric].avg;
+          const langchainScore =
+            systemStats["LangChainLangMemSystem"][metric].avg;
+          const winner =
+            mem0Score > langchainScore
+              ? "Mem0System"
+              : "LangChainLangMemSystem";
+          const difference = Math.abs(mem0Score - langchainScore);
+
+          row.innerHTML = `
+                    <td><strong>${metric
+                      .replace(/_/g, " ")
+                      .toUpperCase()}</strong></td>
+                    <td class="system-mem0">${mem0Score.toFixed(3)}</td>
+                    <td class="system-langchain">${langchainScore.toFixed(
+                      3
+                    )}</td>
+                    <td><span class="winner">${winner}</span></td>
+                    <td>${difference.toFixed(3)}</td>
+                `;
+          tbody.appendChild(row);
+        });
+      }
+
+      // Initialize dashboard function
+      function initializeDashboard() {
+        const { systemStats, systems, metrics, timingData, uniqueQuestions, totalEvals } = processData();
+
+        // Update summary cards
+        document.getElementById('totalEvals').textContent = totalEvals;
+        document.getElementById('totalQuestions').textContent = uniqueQuestions;
+        document.getElementById('totalSystems').textContent = systems.length;
+        document.getElementById('totalMetrics').textContent = metrics.length;
+
+        // Create charts
+        createOverallChart(systemStats, systems);
+        createLLMJudgeChart(systemStats, systems);
+        createNLPMetricsChart(systemStats, systems);
+        createTimingChart(timingData);
+        createMetricsTable(systemStats, systems, metrics);
+      }
+    </script>
+  </body>
+</html>
