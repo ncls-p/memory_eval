@@ -549,6 +549,14 @@ class LangChainLangMemSystem(BaseMemorySystem):
 
     def _create_agent(self):
         """Create LangGraph agent with memory tools."""
+        def custom_prompt(state, config=None):
+            """Custom prompt that includes /no_think directive."""
+            system_msg = """You are a helpful assistant with access to memory tools.
+            Use the manage_memory tool to store important information and the search_memory tool to retrieve relevant information.
+            When responding to queries, base your answers on the retrieved memories and provide helpful, concise responses.
+            If no relevant memories are found, state that clearly."""
+            return [{"role": "system", "content": system_msg}] + state["messages"]
+
         return create_react_agent(
             self.llm,
             tools=[
@@ -556,6 +564,7 @@ class LangChainLangMemSystem(BaseMemorySystem):
                 create_search_memory_tool(namespace=("memories",)),
             ],
             store=self.store,
+            prompt=custom_prompt,
         )
 
     def add(self, messages: List[Dict[str, str]], user_id: Optional[str] = None) -> Any:
@@ -784,12 +793,12 @@ class Mem0System(BaseMemorySystem):
             )
 
         prompt = f"""Based on the following information retrieved from the user's memory:
-{context_str}
+            {context_str}
 
-User's current question: {query}
+            User's current question: {query}
 
-Please provide a helpful and concise response based *only* on the provided memories and the question. If the memories do not contain relevant information, state that.
-"""
+            Please provide a helpful and concise response based *only* on the provided memories and the question. If the memories do not contain relevant information, state that.
+            """
         try:
             response = self.llm.invoke(prompt)
             llm_output = response.content
