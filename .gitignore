@@ -4,3 +4,6 @@ __pycache__/
 .env
 qdrant_storage/
 CLAUDE.md
+.serena/
+.ruff_cache/
+.CLAUDE
